@@ -1,10 +1,31 @@
+name: biasbreaker
+# --- Local Image Context ---
+
+# services:
+#   backend:
+#     container_name: backend
+#     build: .
+#     ports:
+#       - "8000:8000"
+#     env_file: .env
+#     restart: always
+
+# networks:
+#   default:
+#     name: biasbreaker-network
+
+
+
+# --- hub.docker Image Context ---
 services:
   backend:
-    container_name: biasbreaker-backend
-    build: .
+    container_name: backend
+    image: dhruv2k3/biasbreaker-backend:latest
+    pull_policy: always
     ports:
       - "8000:8000"
-    env_file: .env
+    env_file:
+      - .env
     restart: always
 
 networks:

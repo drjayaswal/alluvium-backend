@@ -3,6 +3,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 import app.services.driveServices as driveServices
+import app.services.extract as extract
 
 class Settings(BaseSettings):
     frontend_url: str
@@ -31,14 +32,17 @@ def root():
 @app.get("/get-folder/{folderId}")
 def getFolderId(folderId: str, service=Depends(driveServices.get_drive_service)):
     try:
-        pdf_mime = "application/pdf"
-        docx_mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        
-        query = (
-            f"'{folderId}' in parents and "
-            f"(mimeType = '{pdf_mime}' or mimeType = '{docx_mime}') and "
-            "trashed = false"
-        )
+        file_types = [
+            "application/pdf",
+            "text/plain",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/msword"
+        ]
+
+        mime_query = " or ".join([f"mimeType = '{t}'" for t in file_types])
+
+        query = f"'{folderId}' in parents and ({mime_query}) and trashed = false"
+    
         results = service.files().list(
             q=query,
             fields="nextPageToken, files(id, name, mimeType, size)",
@@ -46,6 +50,32 @@ def getFolderId(folderId: str, service=Depends(driveServices.get_drive_service))
         ).execute()
         
         items = results.get('files', [])
-        return {"files": items}
+
+        if not items:
+            return {"message": "No files found in this folder."}
+
+        all_extracted_data = []
+
+        for file in items:
+            try:
+                
+                file_content_bytes = service.files().get_media(fileId=file["id"]).execute()
+
+                word_array = extract.text(file_content_bytes, file["mimeType"])
+                
+                all_extracted_data.append({
+                    "fileName": file['name'],
+                    "content": word_array
+                })
+
+                print(f"Processed: ({file['id']})")
+
+            except Exception as e:
+                print(f"Failed to process {file['name']}: {e}")
+                continue
+
+        print(all_extracted_data)
+        return {"status": "success", "data": all_extracted_data}
+
     except Exception as e:
         return {"error": str(e)}
