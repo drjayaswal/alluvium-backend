@@ -205,6 +205,24 @@ async def get_description(file: UploadFile = File(...)):
     
     return {"description": text}
 
+@app.delete("/reset-history")
+async def reset_history(
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        current_user.analysis_history = []
+        current_user.processed_filenames = []
+        
+        flag_modified(current_user, "analysis_history")
+        flag_modified(current_user, "processed_filenames")
+        
+        db.commit()
+        return {"status": "success", "message": "Analysis history has been reset"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to reset history: {str(e)}")
+
 @app.post("/upload")
 async def upload_files(
     files: List[UploadFile] = File(...), 
