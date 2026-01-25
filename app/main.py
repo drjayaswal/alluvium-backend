@@ -1,6 +1,5 @@
 import re
 import httpx
-import uuid
 from typing import List, Optional
 from fastapi import Form, FastAPI, UploadFile, File, HTTPException, Depends, Security
 from fastapi.middleware.cors import CORSMiddleware
@@ -139,7 +138,6 @@ async def get_me(current_user: User = Depends(get_current_user)):
 
 
 # --- Core Logic Routes ---
-
 @app.get("/history")
 async def get_history(current_user: User = Depends(get_current_user)):
     """
