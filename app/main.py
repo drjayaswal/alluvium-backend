@@ -198,13 +198,11 @@ async def get_folder(
             raise HTTPException(status_code=400, detail="Drive access failed")
             
         files = response.json().get("files", [])
-        # Only process actual files, not folders
         file_list = [f for f in files if f['mimeType'] != 'application/vnd.google-apps.folder']
 
     if not file_list:
         return {"message": "No files found."}
 
-    # Pass everything to the background worker
     background_tasks.add_task(
         ml_analysis_drive,
         str(current_user.id),
@@ -227,24 +225,8 @@ async def upload_files(
         file_id = uuid.uuid4()
         s3_url, s3_key = await upload_to_s3(file, file.filename)
         
-        # Create DB entry
         create_initial_record(db, current_user.id, file.filename, s3_key, file_id)
         
-        # Trigger ML Task
         background_tasks.add_task(ml_analysis_s3, str(file_id), s3_url, file.filename, description)
     
     return {"message": "Processing started"}
-
-
-    async with httpx.AsyncClient() as client:
-        # Fetch files from Google
-        drive_url = f"https://www.googleapis.com/drive/v3/files?q='{request_data.folderId}'+in+parents+and+trashed=false"
-        headers = {"Authorization": f"Bearer {request_data.googleToken}"}
-        resp = await client.get(drive_url, headers=headers)
-        
-        files = [f for f in resp.json().get("files", []) if f['mimeType'] != 'application/vnd.google-apps.folder']
-
-    # Trigger ML Task for the whole list
-    background_tasks.add_task(ml_analysis_drive, current_user.id, files, request_data.googleToken, request_data.description)
-    
-    return {"message": f"Processing {len(files)} files from Drive"}
