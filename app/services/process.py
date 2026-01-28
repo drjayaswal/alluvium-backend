@@ -13,7 +13,7 @@ async def ml_analysis_drive(user_id: str, files: list, google_token: str, descri
     Handles multiple files from Google Drive.
     """
     db = SessionLocal()
-    target_url = f"{get_settings.NEXT_PUBLIC_ML_SERVER_URL}/analyze-drive"
+    target_url = f"{get_settings.ML_SERVER_URL}/analyze-drive"
     
     async with httpx.AsyncClient(timeout=180.0) as client:
         for file_info in files:
@@ -63,7 +63,7 @@ async def ml_analysis_s3(file_id: str, s3_url: str, filename: str, description: 
     db = SessionLocal()
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
-            target_url = f"{get_settings.NEXT_PUBLIC_ML_SERVER_URL}/analyze-s3"
+            target_url = f"{get_settings.ML_SERVER_URL}/analyze-s3"
             
             resp = await client.post(
                 target_url, 
