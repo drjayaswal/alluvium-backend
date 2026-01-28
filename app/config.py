@@ -3,6 +3,8 @@ from functools import lru_cache
 
 class Settings(BaseSettings):
     FRONTEND_URL: str
+    NEXT_PUBLIC_FRONTEND_URL: str
+    NEXT_PUBLIC_ML_SERVER_URL: str
     DATABASE_URL: str
     ML_SERVER_URL: str
     SECRET_KEY: str

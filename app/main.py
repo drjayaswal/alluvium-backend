@@ -48,7 +48,10 @@ logger = logging.getLogger(__name__)
 # CORS Configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[get_settings.FRONTEND_URL],
+    allow_origins=[
+        get_settings.FRONTEND_URL,
+        get_settings.NEXT_PUBLIC_FRONTEND_URL
+        ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

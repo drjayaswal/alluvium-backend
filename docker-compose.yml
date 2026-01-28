@@ -1,29 +1,32 @@
-name: biasbreaker-backend
-
+# --- Local Image Context ---
 services:
-  backend-local:
-    container_name: biasbreaker-backend-local
-    build: .
+  backend:
+    container_name: backend
+    build:
+      context: .
     ports:
       - "8000:8000"
-    env_file:
-      - .env
-    networks:
-      - biasbreaker-net
-    restart: "no"
-
-  backend-hub:
-    container_name: biasbreaker-hub
-    image: dhruv2k3/biasbreaker-backend:latest
-    pull_policy: always
-    ports:
-      - "8000:8000"
-    env_file:
-      - .env
-    networks:
-      - biasbreaker-net
+    env_file: .env
     restart: always
+    networks:
+      - biasbreaker-net
 
 networks:
   biasbreaker-net:
     driver: bridge
+
+# --- hub.docker Image Context ---
+
+# services:
+#   frontend:
+#     container_name: frontend
+#     image: dhruv2k3/biasbreaker-frontend:latest
+#     pull_policy: always
+#     ports:
+#       - "3000:3000"
+#     env_file:
+#       - .env
+#     restart: always
+#     networks:
+#       - biasbreaker-net
+
