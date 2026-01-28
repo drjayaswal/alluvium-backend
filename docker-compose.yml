@@ -1,8 +1,8 @@
-name: biasbreaker
+name: biasbreaker-backend
 
 services:
   backend-local:
-    container_name: biasbreaker-local
+    container_name: biasbreaker-backend-local
     build: .
     ports:
       - "8000:8000"
