@@ -6,6 +6,8 @@ pydantic-settings==2.11.0
 python-multipart==0.0.20
 python-dotenv==1.2.1
 httpx==0.28.1
+requests==2.32.5
+starlette==0.50.0
 
 # --- Database ---
 SQLAlchemy==2.0.46
@@ -15,12 +17,27 @@ psycopg2-binary==2.9.11
 PyJWT==2.10.1
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
+cryptography==46.0.4
+rsa==4.9.1
 
 # --- Cloud & Files ---
 boto3==1.42.35
 PyPDF2==3.0.1
 python-docx==1.2.0
+PyYAML==6.0.3
+lxml==6.0.2
 
 # --- Google APIs ---
 google-api-python-client==2.188.0
 google-auth-httplib2==0.3.0
+google-auth==2.48.0
+google-api-core==2.29.0
+protobuf==6.33.4
+
+# --- Network & Protocols ---
+dnspython==2.8.0
+email-validator==2.3.0
+urllib3==2.6.3
+websockets==16.0
+watchfiles==1.1.1
+typing-extensions==4.15.0
