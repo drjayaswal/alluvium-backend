@@ -1,4 +1,5 @@
 import httpx
+import asyncio
 import logging
 from app.db.connect import SessionLocal
 from app.db.models import AnalysisStatus
@@ -7,6 +8,18 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 get_settings = settings()
+
+async def ml_health_check(max_retries=10, delay=10):
+    async with httpx.AsyncClient() as client:
+        for _ in range(max_retries):
+            try:
+                response = await client.get(get_settings.ML_SERVER_URL, timeout=10.0)
+                json_response = response.json()
+                if response.status_code == 200 or json_response.get("active") == "healthy":
+                    return True
+            except (httpx.RequestError, httpx.TimeoutException):
+                await asyncio.sleep(delay)
+    return False
 
 async def ml_analysis_drive(user_id: str, files: list, google_token: str, description: str):
     db = SessionLocal()

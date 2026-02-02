@@ -3,6 +3,7 @@ import logging
 import httpx
 
 from typing import List
+import app.services.extract as extract
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -17,7 +18,7 @@ from app.config import settings
 from app.db.models import ResumeAnalysis
 from app.db.schemas import FolderData, AnalysisResponse
 from app.db.connect import init_db, get_db
-from app.services.ml_process import ml_analysis_s3,ml_analysis_drive
+from app.services.ml_process import ml_analysis_s3,ml_analysis_drive,ml_health_check
 from app.lib.aws_client import s3_client
 from app.db.cruds import create_initial_record
 from app.lib.aws_client import upload_to_s3
@@ -101,11 +102,18 @@ def save_to_history(db: Session, user: User, new_results: List[dict]):
     db.commit()
     db.refresh(user)
 
-
 @app.get("/")
-def read_root():
-    return {"status": "BiasBreaker Backend is running"}
+async def read_root():
+    return {"status": "BiasBreaker Backend is running..."}
 
+@app.get("/health")
+async def health_check():
+    return {"service":"Backend","status": "healthy", "active":True}
+
+@app.get("/ml-server/health")
+async def health_check():
+    is_awake = await ml_health_check()
+    return {"service":"ML Server", "status": "healthy" if is_awake else "unhealthy", "active":is_awake}
 
 # --- Authentication Routes ---
 @app.post("/connect")
@@ -148,7 +156,8 @@ async def get_me(current_user: User = Depends(get_current_user)):
         "email": current_user.email,
         "id": str(current_user.id),
         "updated_at": str(current_user.updated_at),
-        "authenticated": True
+        "authenticated": True,
+        "credits": current_user.credits
         }
 
 
@@ -157,8 +166,7 @@ async def get_me(current_user: User = Depends(get_current_user)):
 @app.post("/get-description")
 async def get_description(file: UploadFile = File(...)):
     content = await file.read()
-    text = extract.text(content, file.content_type)
-    return {"description": text}
+    return {"description": extract.text(content, file.content_type)}
 
 @app.delete("/reset-history")
 async def reset_history(
@@ -193,6 +201,9 @@ async def get_folder(
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user)
 ):
+    is_awake = await ml_health_check()   
+    if not is_awake:
+        return
     async with httpx.AsyncClient() as client:
         drive_url = (
             f"https://www.googleapis.com/drive/v3/files?"
@@ -210,7 +221,7 @@ async def get_folder(
 
     if not file_list:
         return {"message": "No files found."}
-
+    
     background_tasks.add_task(
         ml_analysis_drive,
         str(current_user.id),
@@ -229,6 +240,10 @@ async def upload_files(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    is_awake = await ml_health_check()   
+    if not is_awake:
+        return
+    
     for file in files:
         file_id = uuid.uuid4()
         s3_url, s3_key = await upload_to_s3(file, file.filename)

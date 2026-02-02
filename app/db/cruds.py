@@ -1,6 +1,6 @@
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from .models import ResumeAnalysis, AnalysisStatus
+from .models import ResumeAnalysis, AnalysisStatus, User
 import uuid
 
 def create_initial_record(db: Session, user_id: str, filename: str, s3_key: str = None, file_id=None, candidate_info: dict = None):
@@ -34,6 +34,10 @@ def update_file_record(db: Session, file_id: str, status: AnalysisStatus, score:
         if candidate_info is not None:
             db_record.candidate_info = candidate_info
         db_record.updated_at = func.now()
+
+        user = db.query(User).filter(User.id == db_record.user_id).first()
+        if user and user.credits > 0:
+             user.credits -= 1
         db.commit()
         db.refresh(db_record)
     return db_record

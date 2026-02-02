@@ -1,5 +1,5 @@
 import uuid, enum
-from sqlalchemy import Column, String, DateTime, func, ForeignKey, Float, Enum
+from sqlalchemy import Column, String, DateTime, func, ForeignKey, Float, Enum, Integer
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from .connect import Base
@@ -20,6 +20,7 @@ class User(Base):
     processed_filenames = Column(JSONB, nullable=True)
     analysis_history = Column(JSONB, nullable=True)
     analyses = relationship("ResumeAnalysis", back_populates="owner", cascade="all, delete-orphan")
+    credits = Column(Integer, default=1)
 
 class ResumeAnalysis(Base):
     __tablename__ = "resume_analyses"
