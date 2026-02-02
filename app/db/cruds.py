@@ -1,3 +1,4 @@
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from .models import ResumeAnalysis, AnalysisStatus
 import uuid
@@ -32,6 +33,7 @@ def update_file_record(db: Session, file_id: str, status: AnalysisStatus, score:
             db_record.details = details
         if candidate_info is not None:
             db_record.candidate_info = candidate_info
+        db_record.updated_at = func.now()
         db.commit()
         db.refresh(db_record)
     return db_record
