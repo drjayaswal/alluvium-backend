@@ -37,12 +37,11 @@ def update_file_record(db: Session, file_id: str, status: AnalysisStatus, score:
     if score is not None: db_record.match_score = score
     if details is not None: db_record.details = details
     if candidate_info is not None: db_record.candidate_info = candidate_info
-    
-    # Deduct credit
-    user = db.query(User).filter(User.id == db_record.user_id).first()
-    if user and user.credits > 0:
-        user.credits -= 1
-        print(f"Credit deducted. Remaining: {user.credits}")
+    if status == AnalysisStatus.COMPLETED:
+        user = db.query(User).filter(User.id == db_record.user_id).first()
+        if user and user.credits > 0:
+            user.credits -= 1
+            print(f"Credit deducted. Remaining: {user.credits}")
 
     db.commit()
     db.refresh(db_record)
