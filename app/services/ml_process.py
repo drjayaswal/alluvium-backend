@@ -9,24 +9,16 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 get_settings = settings()
 
-async def ml_health_check(max_retries=12, delay=10):
+async def ml_health_check(max_retries=10, delay=10):
     async with httpx.AsyncClient() as client:
         for i in range(max_retries):
             try:
-                response = await client.get(f"{get_settings.ML_SERVER_URL}/")
-                if response.status_code == 200:
-                    try:
-                        data = response.json()
-                        if data.get("status") == "healthy" or data.get("message"):
-                            logger.info("ML Server is awake and healthy.")
-                            return True
-                    except Exception:
-                        logger.info(f"ML Server responding but not JSON yet... (Attempt {i+1})")
-                
-                logger.info(f"Waiting for ML Server to wake up... (Attempt {i+1}/{max_retries})")
-            except Exception as e:
-                logger.info(f"ML Server connection failed: {e}. Retrying...")
-            
+                response = await client.get(f"{get_settings.ML_SERVER_URL}/health")
+                if response.status_code == 200 and "application/json" in response.headers.get("content-type", ""):
+                    return True
+                print(f"ML Server is waking up (Attempt {i+1})...")
+            except Exception:
+                print(f"ML Server connection failed, retrying in {delay}s...")
             await asyncio.sleep(delay)
     return False
 
@@ -92,14 +84,15 @@ async def ml_analysis_s3(file_id: str, s3_url: str, filename: str, description: 
 
         async with httpx.AsyncClient(timeout=120.0) as client:
             target_url = f"{get_settings.ML_SERVER_URL}/analyze-s3"
-            
+
             resp = await client.post(
                 target_url, 
                 json={
                     "filename": filename, 
                     "file_url": s3_url,
                     "description": description
-                }
+                },
+                timeout=120.0 
             )
             
             if resp.status_code == 200:
