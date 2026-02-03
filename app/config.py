@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     AWS_REGION: str
     AWS_BUCKET_NAME: str
     DELETE_S3_AFTER_PROCESSING: bool = True
-
+    ML_SERVER_API_KEY: str
     model_config = SettingsConfigDict(env_file=".env")
 
 @lru_cache
