@@ -1,7 +1,7 @@
 import uuid
 import logging
 import httpx
-
+import asyncio
 from typing import List
 import app.services.extract as extract
 from pydantic import BaseModel
@@ -56,6 +56,14 @@ app.add_middleware(
 class ConnectData(BaseModel):
     email: str
     password: str
+
+
+@app.on_event("startup")
+async def startup_event():
+    # Fire and forget: send a ping to ML server when Backend starts
+    # This begins the ML wake-up process immediately
+    asyncio.create_task(ml_health_check(max_retries=1, delay=0))
+
 
 # --- Auth Dependency ---
 async def get_current_user(

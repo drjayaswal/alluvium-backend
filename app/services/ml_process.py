@@ -9,18 +9,21 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 get_settings = settings()
 
-async def ml_health_check(max_retries=20, delay=10):
+async def ml_health_check(max_retries=5, delay=5):
     async with httpx.AsyncClient() as client:
         for i in range(max_retries):
             try:
-                response = await client.get(f"{get_settings.ML_SERVER_URL}/health")
-                if response.status_code == 200 and "application/json" in response.headers.get("content-type", ""):
-                    print(f"ML Server is healthy and awake!")
+                # Lower timeout so we don't hang on a dead socket
+                response = await client.get(f"{get_settings.ML_SERVER_URL}/health", timeout=2.0)
+                if response.status_code == 200:
                     return True
-            except Exception:
-                print(f"ML Server connection failed, retrying in {delay}s...")
+            except (httpx.ConnectError, httpx.RequestError):
+                # This happens while the ML server is "Waking Up"
+                print(f"ML Server waking up (attempt {i+1})...")
+            
             await asyncio.sleep(delay)
     return False
+
 
 async def ml_analysis_drive(user_id: str, files: list, google_token: str, description: str):
     is_awake = await ml_health_check(max_retries=12, delay=10)
