@@ -39,3 +39,35 @@ class UserResponse(UserBase):
 
 class LatestFolderResponse(BaseModel):
     latest_folder_id: Optional[str] = None
+
+class VideoIngestRequest(BaseModel):
+    url: str
+    user_id: str
+
+class StatusUpdate(BaseModel):
+    source_id: str
+    status: str
+
+class ChatRequest(BaseModel):
+    question: str
+    source_id: str
+    conversation_id: Optional[str] = None
+
+class ChunkData(BaseModel):
+    content: str
+    embedding: List[float]
+
+class SyncRequest(BaseModel):
+    source_id: str
+    chunks: List[ChunkData]
+
+class ConnectData(BaseModel):
+    email: str
+    password: str
+
+class SourceSchema(BaseModel):
+    id: UUID
+    source_name: str
+    source_type: str
+    status: str
+    created_at: datetime

@@ -33,12 +33,8 @@ cp .env.example .env
 ## Running the Backend
 
 ```bash
-# Development mode
-npm run dev
-
-# Production mode
-npm run build
-npm start
+# Development mode with uvicorn
+uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ## Git Workflow
