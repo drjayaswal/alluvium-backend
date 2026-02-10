@@ -319,15 +319,13 @@ async def chat(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    settings = get_settings 
+    
     if current_user.credits <= 0:
-        raise HTTPException(
-            status_code=402, 
-            detail="Insufficient credits. Please top up your account"
-        )
+        raise HTTPException(status_code=402, detail="Insufficient credits.")
+
     try:
+        # 1. CONVERSATION MANAGEMENT
         conversation = None
-        
         if data.conversation_id:
             try:
                 conv_id = uuid.UUID(str(data.conversation_id))
@@ -346,30 +344,37 @@ async def chat(
         
         db.add(ChatMessage(conversation_id=conversation.id, role="user", content=data.question))
 
-        source_exists = db.query(SourceChunk).filter(SourceChunk.source_id == data.source_id).first()
-        if not source_exists:
-            raise HTTPException(status_code=404, detail="Source ID not found or has no content.")
-
+        # 2. RAG LOGIC (Global Search)
         async with httpx.AsyncClient() as client:
-            v_resp = await client.post(
-                f"{settings.ML_SERVER_URL}/get-vector", 
-                json={"text": data.question},
-                timeout=20.0 
+            # --- GET VECTOR ---
+            try:
+                v_resp = await client.post(
+                    f"{get_settings.ML_SERVER_URL}/get-vector", 
+                    json={"text": data.question},
+                    timeout=20.0 
+                )
+                v_resp.raise_for_status()
+                query_vector = v_resp.json().get("vector")
+            except Exception as e:
+                print(f"Vectorization Error: {str(e)}")
+                raise HTTPException(status_code=502, detail="Failed to vectorize question.")
+
+            # --- DATABASE SEARCH ---
+            chunks = (
+                db.query(SourceChunk)
+                .join(Source, SourceChunk.source_id == Source.id)
+                .filter(Source.user_id == current_user.id)
+                .order_by(SourceChunk.embedding.cosine_distance(query_vector))
+                .limit(5)
+                .all()
             )
-            v_resp.raise_for_status()
-            query_vector = v_resp.json()["vector"]
 
-            chunks = db.query(SourceChunk).filter(
-                SourceChunk.source_id == data.source_id
-            ).order_by(
-                SourceChunk.embedding.cosine_distance(query_vector)
-            ).limit(5).all()
+            context_text = "\n\n".join([c.content for c in chunks]) if chunks else ""
 
-            context_text = "\n\n".join([c.content for c in chunks])
-
+            # --- GENERATE ANSWER ---
             try:
                 ai_resp = await client.post(
-                    f"{settings.ML_SERVER_URL}/generate-answer", 
+                    f"{get_settings.ML_SERVER_URL}/generate-answer", 
                     json={
                         "question": data.question,
                         "context": context_text
@@ -377,13 +382,16 @@ async def chat(
                     timeout=90.0
                 )
                 ai_resp.raise_for_status()
-                answer_text = ai_resp.json()["answer"]
-            except httpx.HTTPStatusError as e:
-                raise HTTPException(status_code=502, detail="ML Model failed to generate answer")
+                # Use .get() to avoid KeyError if the key is missing
+                resp_data = ai_resp.json()
+                answer_text = resp_data.get("answer", "I couldn't process that.")
+            except Exception as e:
+                print(f"Generation Error: {str(e)}")
+                raise HTTPException(status_code=502, detail="ML Model failed to respond.")
 
+        # 3. SAVE & COMMIT
         db.add(ChatMessage(conversation_id=conversation.id, role="assistant", content=answer_text))
         current_user.credits -= 1
-        db.add(current_user)        
         db.commit() 
 
         return {
@@ -392,15 +400,13 @@ async def chat(
             "context_used": len(chunks) > 0 
         }
             
-    except httpx.HTTPStatusError as e:
-        db.rollback()
-        raise HTTPException(status_code=502, detail=f"ML Service Error: {e.response.text}")
     except HTTPException:
         db.rollback()
         raise
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+        print(f"Chat Route Error: {str(e)}") # This will now print the EXACT error in your terminal
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 @app.get("/conversations")
 async def get_conversations(db: Session = Depends(get_db)):
     return db.query(Conversation).order_by(Conversation.created_at.desc()).all()

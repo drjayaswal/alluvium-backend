@@ -51,7 +51,6 @@ class StatusUpdateSchema(BaseModel):
 
 class ChatRequestSchema(BaseModel):
     question: str
-    source_id: str
     conversation_id: Optional[str] = None
 
 class ChunkDataSchema(BaseModel):
