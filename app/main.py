@@ -52,10 +52,10 @@ app.add_middleware(
 
 # --- Startup Route ---
 @app.on_event("startup")
-async def startup_event():
-    # Fire and forget: send a ping to ML server when Backend starts
-    # This begins the ML wake-up process immediately
-    asyncio.create_task(ml_health_check(max_retries=1, delay=0))
+# async def startup_event():
+#     # Fire and forget: send a ping to ML server when Backend starts
+#     # This begins the ML wake-up process immediately
+#     asyncio.create_task(ml_health_check(max_retries=1, delay=0))
 
 # --- Auth Dependency ---
 async def get_current_user(
@@ -74,7 +74,7 @@ async def get_current_user(
 
 # --- Helper Logic: Persistence ---
 def save_to_history(background_tasks: BackgroundTasks,db: Session, user: User, new_results: List[dict]):
-    background_tasks.add_task(ml_health_check)
+    #   background_tasks.add_task(ml_health_check)
     if not new_results:
         return
     
@@ -113,7 +113,7 @@ async def health_check():
 # --- Authentication Routes ---
 @app.post("/connect")
 async def connect(background_tasks: BackgroundTasks,data: ConnectDataSchema, db: Session = Depends(get_db)):
-    background_tasks.add_task(ml_health_check)
+    #   background_tasks.add_task(ml_health_check)
     user = db.query(User).filter(User.email == data.email).first()
 
     if user:
@@ -147,7 +147,7 @@ async def connect(background_tasks: BackgroundTasks,data: ConnectDataSchema, db:
     }
 @app.get("/auth/me")
 async def get_me(background_tasks: BackgroundTasks,current_user: User = Depends(get_current_user)):
-    background_tasks.add_task(ml_health_check)
+    #   background_tasks.add_task(ml_health_check)
     return {
         "email": current_user.email,
         "id": str(current_user.id),
@@ -423,7 +423,7 @@ async def get_folder(
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user)
 ):
-    background_tasks.add_task(ml_health_check)
+    # #   background_tasks.add_task(ml_health_check)
     if current_user.credits == 0:
         return {"message": "You have 0 Credits left"}
     async with httpx.AsyncClient() as client:
@@ -461,7 +461,7 @@ async def upload_files(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    background_tasks.add_task(ml_health_check)
+    #   background_tasks.add_task(ml_health_check)
     if current_user.credits == 0:
         return {"message": "You have 0 Credits left"}
     for file in files:
