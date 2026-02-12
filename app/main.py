@@ -101,7 +101,7 @@ def save_to_history(background_tasks: BackgroundTasks,db: Session, user: User, n
 # --- Root Routes ---
 @app.get("/")
 async def read_root():
-    return {"status": "Basal Backend is running..."}
+    return {"status": "Alluvium Backend is running..."}
 @app.get("/health")
 async def health_check():
     return {"service":"Backend","status": "healthy", "active":True}
@@ -496,7 +496,7 @@ async def create_feedback(
         html_content = create_html_body(data.category.value, data.content)
 
         message = MessageSchema(
-            subject="Feedback Received • Basal™",
+            subject="Feedback Received • Alluvium™",
             recipients=[data.email],
             body=html_content,
             subtype=MessageType.html,
@@ -544,7 +544,7 @@ async def resolve_feedback(
         html_content = create_resolve_html_body(feedback_item.category, feedback_item.content)
 
         message = MessageSchema(
-            subject="Feedback Resolved • Basal™",
+            subject="Feedback Resolved • Alluvium™",
             recipients=[feedback_item.email],
             body=html_content,
             subtype=MessageType.html,

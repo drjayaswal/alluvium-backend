@@ -22,7 +22,7 @@ def create_html_body(category_key: str, content: str):
         <body style="margin: 0; padding: 0; font-family: -apple-system, sans-serif; background-color: #050505; color: #ffffff;">
             <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
                 <div style="margin-bottom: 30px; border-left: 4px solid #0284c7; padding-left: 20px; display: flex; align-items: center;">
-                    <img src="cid:logo" alt="Basal Logo" style="height: 50px; width: auto; display: block; margin-right: 20px;">
+                    <img src="cid:logo" alt="Alluvium Logo" style="height: 50px; width: auto; display: block; margin-right: 20px;">
                     <div>
                         <h1 style="text-transform: uppercase; letter-spacing: 2px; font-size: 24px; margin: 0;">
                             Feedback Received<span style="color: #0284c7;">•</span>
@@ -50,9 +50,9 @@ def create_html_body(category_key: str, content: str):
                 </p>
 
                 <div style="border-top: 1px solid #1a1a1a; padding-top: 20px; text-align: center;">
-                    <img src="cid:logo" alt="Basal Logo" style="height: 30px; opacity: 0.5;">
+                    <img src="cid:logo" alt="Alluvium Logo" style="height: 30px; opacity: 0.5;">
                     <p style="font-size: 11px; color: #525252; text-align: center; letter-spacing: 1px;">
-                        Sent by Basal™ • Automated System
+                        Sent by Alluvium™ • Automated System
                     </p>
                 </div>
             </div>
@@ -75,7 +75,7 @@ def create_resolve_html_body(category: str, content: str):
         <body style="margin: 0; padding: 0; font-family: -apple-system, sans-serif; background-color: #050505; color: #ffffff;">
             <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
                 <div style="margin-bottom: 30px; border-left: 4px solid #0284c7; padding-left: 20px; display: flex; align-items: center;">
-                    <img src="cid:logo" alt="Basal Logo" style="height: 50px; width: auto; display: block; margin-right: 20px;">
+                    <img src="cid:logo" alt="Alluvium Logo" style="height: 50px; width: auto; display: block; margin-right: 20px;">
                     <div>
                         <h1 style="text-transform: uppercase; letter-spacing: 2px; font-size: 24px; margin: 0;">
                             Feedback Resolved<span style="color: #0284c7;">•</span>
@@ -99,13 +99,13 @@ def create_resolve_html_body(category: str, content: str):
                 </div>
 
                 <p style="font-size: 13px; color: #525252; line-height: 1.6; margin-bottom: 60px;">
-                    Thank you for helping us refine the Basal™
+                    Thank you for helping us refine the Alluvium™
                 </p>
 
                 <div style="border-top: 1px solid #1a1a1a; padding-top: 20px; text-align: center;">
-                    <img src="cid:logo" alt="Basal Logo" style="height: 30px; opacity: 0.5;">
+                    <img src="cid:logo" alt="Alluvium Logo" style="height: 30px; opacity: 0.5;">
                     <p style="font-size: 11px; color: #525252; text-align: center; letter-spacing: 1px;">
-                        Sent by Basal™ • Automated System
+                        Sent by Alluvium™ • Automated System
                     </p>
                 </div>
             </div>

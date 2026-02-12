@@ -1,6 +1,15 @@
-# Basal Backend
+---
+title: Alluvium Backend
+emoji: 🚀
+colorFrom: blue
+colorTo: red
+sdk: docker
+app_port: 7860
+---
 
-A backend service for the Basal project that helps detect and mitigate bias in AI systems.
+# Alluvium Backend
+
+A backend service for the Alluvium project that helps detect and mitigate bias in AI systems.
 
 ## Prerequisites
 
@@ -12,10 +21,10 @@ A backend service for the Basal project that helps detect and mitigate bias in A
 
 ```bash
 # Clone the repository
-git clone https://github.com/drjayaswal/basal-backend.git
+git clone https://github.com/drjayaswal/alluvium-backend.git
 
 # Navigate to the project directory
-cd basal-backend
+cd alluvium-backend
 
 # Install dependencies
 npm install
@@ -54,24 +63,24 @@ git commit -m "describe your changes"
 To build and push the Docker image providing the Google Client ID, use:
 ## Platform Dependent MAC
 ```bash
-docker build -t dhruv2k3/basal-backend:latest .
+docker build -t dhruv2k3/alluvium-backend:latest .
 ```
 ## Platform Independent MAC
 ```bash
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
-  -t dhruv2k3/basal-backend:latest \
+  -t dhruv2k3/alluvium-backend:latest \
   --push .
 ```
 
 To test locally:
 ```bash
-docker run -p 5000:5000 dhruv2k3/basal-backend
+docker run -p 5000:5000 dhruv2k3/alluvium-backend
 ```
 
 To push to Docker Hub:
 ```bash
-docker push dhruv2k3/basal-backend:latest
+docker push dhruv2k3/alluvium-backend:latest
 ```
 
 To run via docker-compose:

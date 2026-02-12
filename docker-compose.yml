@@ -1,13 +1,13 @@
 services:
   backend:
-    image: dhruv2k3/basal-backend:latest
+    image: dhruv2k3/alluvium-backend:latest
     container_name: backend
     ports:
       - "8000:8000"
     env_file:
       - .env
     networks:
-      - basal-net
+      - alluvium-net
 networks:
-  basal-net:
+  alluvium-net:
     driver: bridge
