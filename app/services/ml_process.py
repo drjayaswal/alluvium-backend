@@ -99,7 +99,6 @@ async def ml_analysis_drive(user_id: str, files: list, google_token: str, descri
         
         async with httpx.AsyncClient(timeout=180.0) as client:
             for file_info in files:
-                # Create the 'Pending' record
                 record = create_file_record(
                     db=db, 
                     user_id=user_id, 

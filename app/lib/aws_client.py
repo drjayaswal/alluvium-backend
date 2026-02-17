@@ -20,23 +20,15 @@ s3_client = boto3.client(
 )
 
 async def upload_to_s3(file, filename: str):
-    # Strip any paths sent by browser (e.g. 'folder/file.pdf' -> 'file.pdf')
     clean_name = os.path.basename(filename)
-    
-    # Prefix with resumes/ and a UUID to keep a flat, unique structure
     s3_key = f"resumes/{uuid.uuid4()}-{clean_name}"
-    
     file_content = await file.read()
-    
-    # Upload to S3
     s3_client.upload_fileobj(
         io.BytesIO(file_content), 
         get_settings.AWS_BUCKET_NAME, 
         s3_key,
-        ExtraArgs={"ContentType": file.content_type} # Preserves MIME type in S3
+        ExtraArgs={"ContentType": file.content_type}
     )
-    
-    # Generate presigned URL for ML Server (valid for 1 hour)
     presigned_url = s3_client.generate_presigned_url('get_object',
         Params={'Bucket': get_settings.AWS_BUCKET_NAME, 'Key': s3_key},
         ExpiresIn=3600

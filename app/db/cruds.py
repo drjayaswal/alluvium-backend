@@ -98,7 +98,6 @@ def add_source_chunks(db: Session, source_id: uuid.UUID, chunks_data: list):
             )
             db.add(chunk)
         
-        # Mark source as completed
         db.query(Source).filter(Source.id == source_id).update({"status": AnalysisStatus.COMPLETED})
         db.commit()
     except Exception as e:
@@ -116,8 +115,12 @@ def get_or_create_source(
         source_name: str, 
         user_id: str
     ):
-        existing_source = db.query(Source).filter(Source.unique_key == unique_key).first()
-        
+        existing_source = (
+            db.query(Source)
+            .filter(Source.unique_key == unique_key, Source.user_id == user_id)
+            .first()
+        )
+
         if existing_source:
             return existing_source.id, True
         

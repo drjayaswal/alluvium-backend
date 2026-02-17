@@ -37,8 +37,6 @@ get_settings = settings()
 app = FastAPI(lifespan=lifespan)
 logger = logging.getLogger(__name__)
 
-
-# CORS Configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -74,24 +72,13 @@ async def get_current_user(
 
 # --- Helper Logic: Persistence ---
 def save_to_history(background_tasks: BackgroundTasks,db: Session, user: User, new_results: List[dict]):
-    #   background_tasks.add_task(ml_health_check)
     if not new_results:
         return
-    
-    # Get current history (JSON list)
     current_history = list(user.analysis_history or [])
-    
-    # Combine lists (New results at the top)
     updated_history = (new_results + current_history)[:100]
-    
-    # Update the model
     user.analysis_history = updated_history
-    
-    # Update legacy list for backward compatibility
     new_filenames = [r["filename"] for r in new_results]
     user.processed_filenames = (list(user.processed_filenames or []) + new_filenames)[-100:]
-    
-    # Tell SQLAlchemy the JSON column has changed
     flag_modified(user, "analysis_history")
     flag_modified(user, "processed_filenames")
     
@@ -126,8 +113,6 @@ async def connect(background_tasks: BackgroundTasks,data: ConnectDataSchema, db:
                 "id": str(user.id)
             }
         raise HTTPException(status_code=401, detail="Incorrect password")
-    
-    # Create new user if not exists
     new_user = User(
         email=data.email, 
         hashed_password=hash_password(data.password),
@@ -160,17 +145,21 @@ async def get_me(background_tasks: BackgroundTasks,current_user: User = Depends(
 # --- Updation Routes ---
 @app.patch("/update-source-status")
 async def update_source_status(data: StatusUpdateSchema, db: Session = Depends(get_db)):
+    """Called by ML server when processing completes; no user auth."""
     src = db.query(Source).filter(Source.id == data.source_id).first()
     if src:
         src.status = AnalysisStatus(data.status)
         db.commit()
         return {"message": "updated"}
-    return {"error": "source not found"}, 404
+    raise HTTPException(status_code=404, detail="Source not found")
+
+
 @app.post("/update-source-chunks")
 async def update_source_chunks(data: SyncRequestSchema, db: Session = Depends(get_db)):
+    """Called by ML server to sync chunks; no user auth."""
     try:
         source_uuid = uuid.UUID(str(data.source_id))
-        
+
         existing_source = db.query(Source).filter(Source.id == source_uuid).first()
         if not existing_source:
             raise HTTPException(status_code=404, detail="Source record not found")
@@ -206,9 +195,15 @@ async def update_source_chunks(data: SyncRequestSchema, db: Session = Depends(ge
 @app.get("/get-sources", response_model=List[SourceSchema])
 async def get_user_sources(
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     try:
-        sources = db.query(Source).order_by(Source.created_at.desc()).all()
+        sources = (
+            db.query(Source)
+            .filter(Source.user_id == current_user.id)
+            .order_by(Source.created_at.desc())
+            .all()
+        )
         return sources
     except Exception as e:
         raise HTTPException(status_code=500, detail="Could not fetch sources from database")
@@ -324,7 +319,6 @@ async def chat(
         raise HTTPException(status_code=402, detail="Insufficient credits.")
 
     try:
-        # 1. CONVERSATION MANAGEMENT
         conversation = None
         if data.conversation_id:
             try:
@@ -344,9 +338,7 @@ async def chat(
         
         db.add(ChatMessage(conversation_id=conversation.id, role="user", content=data.question))
 
-        # 2. RAG LOGIC (Global Search)
         async with httpx.AsyncClient() as client:
-            # --- GET VECTOR ---
             try:
                 v_resp = await client.post(
                     f"{get_settings.ML_SERVER_URL}/get-vector", 
@@ -359,7 +351,6 @@ async def chat(
                 print(f"Vectorization Error: {str(e)}")
                 raise HTTPException(status_code=502, detail="Failed to vectorize question.")
 
-            # --- DATABASE SEARCH ---
             chunks = (
                 db.query(SourceChunk)
                 .join(Source, SourceChunk.source_id == Source.id)
@@ -371,7 +362,6 @@ async def chat(
 
             context_text = "\n\n".join([c.content for c in chunks]) if chunks else ""
 
-            # --- GENERATE ANSWER ---
             try:
                 ai_resp = await client.post(
                     f"{get_settings.ML_SERVER_URL}/generate-answer", 
@@ -382,14 +372,12 @@ async def chat(
                     timeout=90.0
                 )
                 ai_resp.raise_for_status()
-                # Use .get() to avoid KeyError if the key is missing
                 resp_data = ai_resp.json()
                 answer_text = resp_data.get("answer", "I couldn't process that.")
             except Exception as e:
                 print(f"Generation Error: {str(e)}")
                 raise HTTPException(status_code=502, detail="ML Model failed to respond.")
 
-        # 3. SAVE & COMMIT
         db.add(ChatMessage(conversation_id=conversation.id, role="assistant", content=answer_text))
         current_user.credits -= 1
         db.commit() 
@@ -405,16 +393,47 @@ async def chat(
         raise
     except Exception as e:
         db.rollback()
-        print(f"Chat Route Error: {str(e)}") # This will now print the EXACT error in your terminal
+        print(f"Chat Route Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 @app.get("/conversations")
-async def get_conversations(db: Session = Depends(get_db)):
-    return db.query(Conversation).order_by(Conversation.created_at.desc()).all()
+async def get_conversations(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return (
+        db.query(Conversation)
+        .filter(Conversation.user_id == current_user.id)
+        .order_by(Conversation.created_at.desc())
+        .all()
+    )
+
+
 @app.get("/conversations/{conversation_id}/messages")
-async def get_messages(conversation_id: str, db: Session = Depends(get_db)):
-    return db.query(ChatMessage).filter(
-        ChatMessage.conversation_id == conversation_id
-    ).order_by(ChatMessage.created_at.asc()).all()
+async def get_messages(
+    conversation_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        conv_uuid = uuid.UUID(conversation_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid conversation ID format")
+    conversation = (
+        db.query(Conversation)
+        .filter(
+            Conversation.id == conv_uuid,
+            Conversation.user_id == current_user.id,
+        )
+        .first()
+    )
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return (
+        db.query(ChatMessage)
+        .filter(ChatMessage.conversation_id == conv_uuid)
+        .order_by(ChatMessage.created_at.asc())
+        .all()
+    )
 
 # --- Service Routes ---
 @app.post("/get-folder")
@@ -529,6 +548,116 @@ async def get_all_feedbacks(
     
     feedbacks = db.query(Feedback).order_by(Feedback.created_at.desc()).all()
     return feedbacks
+
+
+@app.get("/admin/data")
+async def get_admin_data(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return all DB data for admin (useremail === dhruv@gmail.com)."""
+    if current_user.email != "dhruv@gmail.com":
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied. Administrator privileges required",
+        )
+    users = db.query(User).order_by(User.updated_at.desc()).all()
+    users_data = [
+        {
+            "id": str(u.id),
+            "email": u.email,
+            "credits": u.credits,
+            "updated_at": str(u.updated_at) if u.updated_at else None,
+            "linked_folder_ids": u.linked_folder_ids or [],
+            "processed_filenames": u.processed_filenames or [],
+        }
+        for u in users
+    ]
+    sources = db.query(Source).order_by(Source.created_at.desc()).all()
+    sources_data = [
+        {
+            "id": str(s.id),
+            "source_name": s.source_name,
+            "source_type": s.source_type,
+            "status": s.status.value if hasattr(s.status, "value") else str(s.status),
+            "unique_key": s.unique_key,
+            "user_id": str(s.user_id),
+            "created_at": str(s.created_at) if s.created_at else None,
+            "updated_at": str(s.updated_at) if s.updated_at else None,
+        }
+        for s in sources
+    ]
+    analyses = (
+        db.query(ResumeAnalysis)
+        .order_by(ResumeAnalysis.created_at.desc())
+        .all()
+    )
+    analyses_data = [
+        {
+            "id": str(a.id),
+            "user_id": str(a.user_id),
+            "filename": a.filename,
+            "s3_key": a.s3_key,
+            "status": a.status.value if hasattr(a.status, "value") else str(a.status),
+            "match_score": a.match_score,
+            "details": a.details,
+            "candidate_info": a.candidate_info,
+            "created_at": str(a.created_at) if a.created_at else None,
+            "updated_at": str(a.updated_at) if a.updated_at else None,
+        }
+        for a in analyses
+    ]
+    conversations = (
+        db.query(Conversation)
+        .order_by(Conversation.created_at.desc())
+        .all()
+    )
+    conversations_data = []
+    for c in conversations:
+        messages = (
+            db.query(ChatMessage)
+            .filter(ChatMessage.conversation_id == c.id)
+            .order_by(ChatMessage.created_at.asc())
+            .all()
+        )
+        conversations_data.append(
+            {
+                "id": str(c.id),
+                "user_id": str(c.user_id),
+                "title": c.title,
+                "created_at": str(c.created_at) if c.created_at else None,
+                "message_count": len(messages),
+                "messages": [
+                    {
+                        "id": str(m.id),
+                        "role": m.role,
+                        "content": m.content,
+                        "created_at": str(m.created_at) if m.created_at else None,
+                    }
+                    for m in messages
+                ],
+            }
+        )
+    feedbacks = db.query(Feedback).order_by(Feedback.created_at.desc()).all()
+    feedbacks_data = [
+        {
+            "id": str(f.id),
+            "email": f.email,
+            "category": f.category.value if hasattr(f.category, "value") else str(f.category),
+            "content": f.content,
+            "created_at": str(f.created_at) if f.created_at else None,
+        }
+        for f in feedbacks
+    ]
+    return {
+        "users": users_data,
+        "sources": sources_data,
+        "resume_analyses": analyses_data,
+        "conversations": conversations_data,
+        "feedbacks": feedbacks_data,
+    }
+
+
 @app.post("/resolve-feedback")
 async def resolve_feedback(
     data: FeedbackResolveSchema, 
