@@ -2,25 +2,34 @@ import uuid
 import httpx
 import logging
 import asyncio
+import os
+import warnings
 import app.services.extract as extract
 
+# Suppress boto3 Python 3.9 deprecation warning
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="boto3")
+
 from typing import List
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from sqlalchemy.orm.attributes import flag_modified
 from fastapi_mail import FastMail, MessageSchema, MessageType
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi import Form, FastAPI, UploadFile, File, HTTPException, Depends, Security, BackgroundTasks
+from fastapi import Form, FastAPI, UploadFile, File, HTTPException, Depends, Security, BackgroundTasks, Request
 
 import app.services.extract as extract
 
 from app.config import settings
-from app.db.models import User, Source
+from app.db.models import User, Source, UserRole
 from app.lib.aws_client import s3_client
 from contextlib import asynccontextmanager
 from app.db.connect import init_db, get_db
 from app.lib.aws_client import upload_to_s3
 from app.lib.mail_client import conf, create_html_body, create_resolve_html_body
+from app.lib.cache import get_cache_key, get, set, delete
+from app.lib.rate_limit import RateLimitMiddleware
+from app.lib.logging_config import setup_logging
 from app.db.cruds import create_file_record, get_or_create_source
 from app.lib.auth_client import hash_password, verify_password, create_access_token, decode_token
 from app.db.models import ResumeAnalysis, AnalysisStatus, SourceChunk, ChatMessage, Conversation,Feedback
@@ -29,14 +38,33 @@ from app.db.schemas import FolderDataSchema, AnalysisResponseSchema,StatusUpdate
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Set up logging
+    log_level = os.getenv("LOG_LEVEL", "INFO")
+    log_file = os.getenv("LOG_FILE", "logs/app.log")
+    setup_logging(log_level=log_level, log_file=log_file)
+    
+    logger = logging.getLogger(__name__)
+    logger.info("Starting Alluvium Backend...")
+    
     init_db()
+    logger.info("Database initialized")
+    
     yield
+    
+    logger.info("Shutting down Alluvium Backend...")
 
 security = HTTPBearer()
 get_settings = settings()
 app = FastAPI(lifespan=lifespan)
 logger = logging.getLogger(__name__)
 
+# Add compression middleware (should be first)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# Add rate limiting middleware
+app.add_middleware(RateLimitMiddleware, calls=100, period=60)
+
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -65,9 +93,18 @@ async def get_current_user(
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid or expired session token")
     
+    # Cache user lookup for 5 minutes
+    cache_key = f"user:{payload['sub']}"
+    cached_user = get(cache_key)
+    if cached_user:
+        return cached_user
+    
     user = db.query(User).filter(User.email == payload["sub"]).first()
     if not user:
         raise HTTPException(status_code=404, detail="User account not found")
+    
+    # Cache user for 5 minutes
+    set(cache_key, user, ttl=300)
     return user
 
 # --- Helper Logic: Persistence ---
@@ -107,10 +144,11 @@ async def connect(background_tasks: BackgroundTasks,data: ConnectDataSchema, db:
         if verify_password(data.password, user.hashed_password):
             token = create_access_token(data={"sub": user.email})
             return {
-                "success": True, 
+                "success": True,
                 "token": token,
                 "email": user.email,
-                "id": str(user.id)
+                "id": str(user.id),
+                "role": user.role.value,
             }
         raise HTTPException(status_code=401, detail="Incorrect password")
     new_user = User(
@@ -128,19 +166,43 @@ async def connect(background_tasks: BackgroundTasks,data: ConnectDataSchema, db:
         "success": True,
         "token": token,
         "email": new_user.email,
-        "id": str(new_user.id)
+        "id": str(new_user.id),
+        "role": new_user.role.value,
     }
 @app.get("/auth/me")
-async def get_me(background_tasks: BackgroundTasks,current_user: User = Depends(get_current_user)):
-    #   background_tasks.add_task(ml_health_check)
-    return {
+async def get_me(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # Cache response for 1 minute
+    cache_key = get_cache_key(request, "auth", user_id=str(current_user.id))
+    cached = get(cache_key)
+    # Invalidate old cache entries that don't have role field
+    if cached and "role" not in cached:
+        delete(cache_key)
+        cached = None
+    if cached:
+        return cached
+    
+    # Use count query instead of loading all conversations
+    conversation_count = db.query(Conversation).filter(
+        Conversation.user_id == current_user.id
+    ).count()
+    
+    result = {
         "email": current_user.email,
         "id": str(current_user.id),
         "updated_at": str(current_user.updated_at),
         "authenticated": True,
         "credits": current_user.credits,
-        "total_conversations": len(current_user.conversations)
-        }
+        "total_conversations": conversation_count,
+        "role": current_user.role.value,
+    }
+    
+    set(cache_key, result, ttl=60)
+    return result
 
 # --- Updation Routes ---
 @app.patch("/update-source-status")
@@ -194,16 +256,26 @@ async def update_source_chunks(data: SyncRequestSchema, db: Session = Depends(ge
         raise HTTPException(status_code=500, detail="Database Sync Failed")
 @app.get("/get-sources", response_model=List[SourceSchema])
 async def get_user_sources(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     try:
+        # Cache sources for 2 minutes
+        cache_key = f"sources:{current_user.id}"
+        cached = get(cache_key)
+        if cached:
+            return cached
+        
+        # Optimize query - no need to load chunks here
         sources = (
             db.query(Source)
             .filter(Source.user_id == current_user.id)
             .order_by(Source.created_at.desc())
             .all()
         )
+        
+        set(cache_key, sources, ttl=120)
         return sources
     except Exception as e:
         raise HTTPException(status_code=500, detail="Could not fetch sources from database")
@@ -381,6 +453,11 @@ async def chat(
         db.add(ChatMessage(conversation_id=conversation.id, role="assistant", content=answer_text))
         current_user.credits -= 1
         db.commit() 
+        
+        # Invalidate caches
+        delete(f"conversations:{current_user.id}")
+        delete(f"messages:{conversation.id}")
+        delete(f"user:{current_user.email}")
 
         return {
             "answer": answer_text,
@@ -397,20 +474,31 @@ async def chat(
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 @app.get("/conversations")
 async def get_conversations(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return (
+    # Cache conversations for 1 minute
+    cache_key = f"conversations:{current_user.id}"
+    cached = get(cache_key)
+    if cached:
+        return cached
+    
+    conversations = (
         db.query(Conversation)
         .filter(Conversation.user_id == current_user.id)
         .order_by(Conversation.created_at.desc())
         .all()
     )
+    
+    set(cache_key, conversations, ttl=60)
+    return conversations
 
 
 @app.get("/conversations/{conversation_id}/messages")
 async def get_messages(
     conversation_id: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -418,6 +506,13 @@ async def get_messages(
         conv_uuid = uuid.UUID(conversation_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid conversation ID format")
+    
+    # Cache messages for 30 seconds (they change frequently)
+    cache_key = f"messages:{conversation_id}"
+    cached = get(cache_key)
+    if cached:
+        return cached
+    
     conversation = (
         db.query(Conversation)
         .filter(
@@ -428,12 +523,16 @@ async def get_messages(
     )
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    return (
+    
+    messages = (
         db.query(ChatMessage)
         .filter(ChatMessage.conversation_id == conv_uuid)
         .order_by(ChatMessage.created_at.asc())
         .all()
     )
+    
+    set(cache_key, messages, ttl=30)
+    return messages
 
 # --- Service Routes ---
 @app.post("/get-folder")
@@ -445,6 +544,8 @@ async def get_folder(
     # #   background_tasks.add_task(ml_health_check)
     if current_user.credits == 0:
         return {"message": "You have 0 Credits left"}
+    if not request_data.description or not request_data.description.strip():
+        raise HTTPException(status_code=400, detail="Description cannot be empty")
     async with httpx.AsyncClient() as client:
         drive_url = (
             f"https://www.googleapis.com/drive/v3/files?"
@@ -458,7 +559,19 @@ async def get_folder(
             raise HTTPException(status_code=400, detail="Drive access failed")
             
         files = response.json().get("files", [])
-        file_list = [f for f in files if f['mimeType'] != 'application/vnd.google-apps.folder']
+        # Allowed MIME types: txt, docs (Google Docs), docx, doc, pdf
+        allowed_mime_types = [
+            'text/plain',  # txt
+            'application/vnd.google-apps.document',  # Google Docs
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',  # docx
+            'application/msword',  # doc
+            'application/pdf'  # pdf
+        ]
+        file_list = [
+            f for f in files 
+            if f['mimeType'] != 'application/vnd.google-apps.folder' 
+            and f['mimeType'] in allowed_mime_types
+        ]
 
     if not file_list:
         return {"message": "No files found."}
@@ -483,6 +596,8 @@ async def upload_files(
     #   background_tasks.add_task(ml_health_check)
     if current_user.credits == 0:
         return {"message": "You have 0 Credits left"}
+    if not description or not description.strip():
+        raise HTTPException(status_code=400, detail="Description cannot be empty")
     for file in files:
         file_id = uuid.uuid4()
         s3_url, s3_key = await upload_to_s3(file, file.filename)
@@ -540,12 +655,11 @@ async def get_all_feedbacks(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    if current_user.email != "dhruv@gmail.com":
+    if current_user.role != UserRole.ADMIN:
         raise HTTPException(
-            status_code=403, 
-            detail="Access denied. Administrator privileges required"
+            status_code=403,
+            detail="Access denied. Administrator privileges required",
         )
-    
     feedbacks = db.query(Feedback).order_by(Feedback.created_at.desc()).all()
     return feedbacks
 
@@ -555,8 +669,8 @@ async def get_admin_data(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Return all DB data for admin (useremail === dhruv@gmail.com)."""
-    if current_user.email != "dhruv@gmail.com":
+    """Return all DB data for admin (role === admin)."""
+    if current_user.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=403,
             detail="Access denied. Administrator privileges required",
@@ -567,6 +681,7 @@ async def get_admin_data(
             "id": str(u.id),
             "email": u.email,
             "credits": u.credits,
+            "role": u.role.value,
             "updated_at": str(u.updated_at) if u.updated_at else None,
             "linked_folder_ids": u.linked_folder_ids or [],
             "processed_filenames": u.processed_filenames or [],
@@ -660,10 +775,13 @@ async def get_admin_data(
 
 @app.post("/resolve-feedback")
 async def resolve_feedback(
-    data: FeedbackResolveSchema, 
+    data: FeedbackResolveSchema,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Access denied. Administrator privileges required.")
     feedback_item = db.query(Feedback).filter(Feedback.id == data.id).first()
     
     if not feedback_item:

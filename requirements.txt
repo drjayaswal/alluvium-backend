@@ -24,3 +24,6 @@ PyPDF2==3.0.1
 python-docx==1.2.0
 httpx==0.28.1
 fastapi-mail==1.4.1
+
+# --- Caching & Performance ---
+redis==5.0.1

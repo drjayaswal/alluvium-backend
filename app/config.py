@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     NEXT_PUBLIC_FRONTEND_URL: str
     ML_SERVER_URL: str
     DATABASE_URL: str
+    REDIS_URL: str
     SECRET_KEY: str
     ALGORITHM: str
     AWS_ACCESS_KEY: str

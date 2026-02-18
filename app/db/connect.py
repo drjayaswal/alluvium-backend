@@ -7,11 +7,14 @@ get_settings = settings()
 
 engine = create_engine(
     get_settings.DATABASE_URL,
-    pool_size=10, 
-    max_overflow=20, 
-    pool_recycle=1800,
-    pool_pre_ping=True,
-    connect_args={"sslmode": "require"}
+    pool_size=20,  # Increased for better concurrency
+    max_overflow=40,  # Increased overflow for traffic spikes
+    pool_recycle=3600,  # Recycle connections every hour
+    pool_pre_ping=True,  # Verify connections before using
+    pool_timeout=30,  # Timeout for getting connection from pool
+    connect_args={"sslmode": "require"},
+    echo=False,  # Disable SQL logging in production
+    future=True,  # Use SQLAlchemy 2.0 style
 )
 
 

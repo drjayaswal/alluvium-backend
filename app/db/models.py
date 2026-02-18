@@ -13,6 +13,10 @@ class AnalysisStatus(enum.Enum):
     COMPLETED = "completed"
     PROCESSING = "processing"
 
+class UserRole(enum.Enum):
+    USER = "user"
+    ADMIN = "admin"
+
 class Category(enum.Enum):
     GENERAL = "GENERAL"
     BUG = "BUG"
@@ -23,6 +27,7 @@ class Category(enum.Enum):
 class User(Base):
     __tablename__ = "users"
     credits = Column(Integer, default=1)
+    role = Column(Enum(UserRole), default=UserRole.USER)
     hashed_password = Column(String, nullable=False)
     linked_folder_ids = Column(JSONB, nullable=True)
     processed_filenames = Column(JSONB, nullable=True)

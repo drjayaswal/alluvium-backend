@@ -120,15 +120,22 @@ async def ml_analysis_drive(user_id: str, files: list, google_token: str, descri
                     
                     if resp.status_code == 200:
                         ml_data = resp.json()
-                        update_file_record(
-                            db, 
-                            file_id=str(record.id), 
-                            status=AnalysisStatus.COMPLETED, 
-                            score=ml_data.get("match_score", 0),
-                            details=ml_data.get("analysis_details", {}),
-                            candidate_info=ml_data.get("candidate_info", {})
-                        )
+                        if ml_data.get("status") == "failed":
+                            error_msg = ml_data.get("error", "Processing failed")
+                            logger.error(f"ML processing failed for {file_info.get('name')}: {error_msg}")
+                            update_file_record(db, file_id=str(record.id), status=AnalysisStatus.FAILED)
+                        else:
+                            update_file_record(
+                                db, 
+                                file_id=str(record.id), 
+                                status=AnalysisStatus.COMPLETED, 
+                                score=ml_data.get("match_score", 0),
+                                details=ml_data.get("analysis_details", {}),
+                                candidate_info=ml_data.get("candidate_info", {})
+                            )
                     else:
+                        error_text = resp.text[:200] if hasattr(resp, 'text') else "Unknown error"
+                        logger.error(f"ML Server error for {file_info.get('name')}: {resp.status_code} - {error_text}")
                         update_file_record(db, file_id=str(record.id), status=AnalysisStatus.FAILED)
                         
                 except Exception as e:
@@ -162,14 +169,21 @@ async def ml_analysis_s3(file_id: str, s3_url: str, filename: str, description: 
             
             if resp.status_code == 200:
                 ml_data = resp.json()
-                update_file_record(
-                    db, file_id, 
-                    status=AnalysisStatus.COMPLETED, 
-                    score=ml_data.get("match_score", 0),
-                    details=ml_data.get("analysis_details", {}),
-                    candidate_info=ml_data.get("candidate_info", {})
-                )
+                if ml_data.get("status") == "failed":
+                    error_msg = ml_data.get("error", "Processing failed")
+                    logger.error(f"ML processing failed for {filename}: {error_msg}")
+                    update_file_record(db, file_id, status=AnalysisStatus.FAILED)
+                else:
+                    update_file_record(
+                        db, file_id, 
+                        status=AnalysisStatus.COMPLETED, 
+                        score=ml_data.get("match_score", 0),
+                        details=ml_data.get("analysis_details", {}),
+                        candidate_info=ml_data.get("candidate_info", {})
+                    )
             else:
+                error_text = resp.text[:200] if hasattr(resp, 'text') else "Unknown error"
+                logger.error(f"ML Server error for {filename}: {resp.status_code} - {error_text}")
                 update_file_record(db, file_id, status=AnalysisStatus.FAILED)
     except Exception as e:
         logger.error(f"S3 ML Task Crash: {e}")

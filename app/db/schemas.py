@@ -1,6 +1,6 @@
 from uuid import UUID
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Literal
 from pydantic import BaseModel, EmailStr, ConfigDict
 from app.db.models import Category
 
@@ -33,9 +33,10 @@ class AnalysisResponseSchema(BaseModel):
 class UserResponseSchema(UserBaseSchema):
     id: UUID
     updated_at: datetime
+    role: Literal["user", "admin"] = "user"
     linked_folder_ids: List[str] = []
     processed_filenames: List[str] = []
-    analyses: List[AnalysisResponseSchema] = [] 
+    analyses: List[AnalysisResponseSchema] = []
     model_config = ConfigDict(from_attributes=True)
 
 class LatestFolderResponseSchema(BaseModel):
