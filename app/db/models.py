@@ -26,7 +26,7 @@ class Category(enum.Enum):
 
 class User(Base):
     __tablename__ = "users"
-    credits = Column(Integer, default=1)
+    credits = Column(Integer, default=0)
     role = Column(Enum(UserRole), default=UserRole.USER)
     hashed_password = Column(String, nullable=False)
     linked_folder_ids = Column(JSONB, nullable=True)
